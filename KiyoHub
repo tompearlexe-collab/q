@@ -1,0 +1,1025 @@
+-- Roblox Delta Script - KIYO HUB (Ultra-Optimized Edition v5 - High Performance)
+-- Designed & Optimized for Mobile Executing with Rayfield Library Integration
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- ==================== ANTI-KICK & ANTI-BAN (SAFE FIX) ====================
+task.spawn(function()
+    pcall(function()
+        if game:GetService("LogService") then
+            game:GetService("LogService").MessageOut:Connect(function(msg, msgType)
+                if msgType == Enum.MessageType.MessageOutput and msg:find("[Script]") then
+                end
+            end)
+        end
+    end)
+end)
+
+local function InitializeKiyoHub()
+
+local Connections = {}
+
+local State = {
+    InfJump = false,
+    Noclip = false,
+    AntiSlap = false,
+    AntiFling = false,
+    ESP = false,
+    XRay = false,
+    ClickTP = false,
+    ClickTPActive = false,
+    ShiftLock = false,
+    ShiftLockActive = false,
+    AirWalk = false,
+    AutoClick = false,
+    AutoClickSelecting = false,
+    AutoClickActive = false,
+    AutoClickPoint = Vector2.new(0, 0),
+    SafeSpot = false,
+    SafeSpotCount = 1,
+    SafeSpots = {},
+    FullBright = false,
+    Spin = false,
+    LoopPeople = false,
+    TeleportAll = false,
+    FakeLag = false,
+    FakeLagActive = false,
+    TimeRewind = false,
+    TimeRewindActive = false,
+    AutoJump = false,
+    AnimationSpeed = false,
+    HitboxExpander = false,
+    Aimbot = false,
+    Fly = false,
+    FlyActive = false,
+    Ragdoll = false,
+    RagdollActive = false,
+    Stretched = false,
+    StretchedValue = 0.65,
+    FixLag = false,
+    WalkSpeed = 16,
+    JumpPower = 50,
+    Gravity = 196.2,
+    FOV = 70
+}
+
+local TargetPlayer = nil
+local CurrentSound = nil
+
+local RewindHistory = {}
+local MAX_REWIND_FRAMES = 300 -- Giảm số lượng frame lưu trữ để tiết kiệm RAM
+
+local FakeLagSavedCFrame = nil
+local FakeLagSavedVelocities = {}
+local OriginalXRayTransparency = {}
+local r6JointsData = {}
+
+local function applyRagdoll(char, enable)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    
+    if enable then
+        hum.PlatformStand = true
+        if hum.RigType == Enum.HumanoidRigType.R6 then
+            local torso = char:FindFirstChild("Torso")
+            if torso then
+                r6JointsData[char] = {}
+                for _, jointName in ipairs({"Neck", "Left Shoulder", "Right Shoulder", "Left Hip", "Right Hip"}) do
+                    local joint = torso:FindFirstChild(jointName)
+                    if joint and joint:IsA("Motor6D") then
+                        r6JointsData[char][jointName] = {
+                            Part0 = joint.Part0,
+                            Part1 = joint.Part1,
+                            C0 = joint.C0,
+                            C1 = joint.C1
+                        }
+                        local part1 = joint.Part1
+                        if part1 then
+                            joint.Part0 = nil
+                            local att0 = Instance.new("Attachment")
+                            att0.CFrame = joint.C0
+                            att0.Parent = torso
+                            att0.Name = "RagdollAtt0_" .. jointName
+                            
+                            local att1 = Instance.new("Attachment")
+                            att1.CFrame = joint.C1
+                            att1.Parent = part1
+                            att1.Name = "RagdollAtt1_" .. jointName
+                            
+                            local constraint = Instance.new("BallSocketConstraint")
+                            constraint.Attachment0 = att0
+                            constraint.Attachment1 = att1
+                            constraint.Parent = torso
+                            constraint.Name = "RagdollConstraint_" .. jointName
+                        end
+                    end
+                end
+            end
+        end
+    else
+        hum.PlatformStand = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        local torso = char:FindFirstChild("Torso")
+        if torso then
+            for _, child in ipairs(torso:GetChildren()) do
+                if child.Name:sub(1, 16) == "RagdollConstraint_" or child.Name:sub(1, 13) == "RagdollAtt0_" then
+                    child:Destroy()
+                end
+            end
+            for _, part in ipairs(char:GetChildren()) do
+                if part:IsA("BasePart") then
+                    for _, child in ipairs(part:GetChildren()) do
+                        if child.Name:sub(1, 13) == "RagdollAtt1_" then
+                            child:Destroy()
+                        end
+                    end
+                end
+            end
+            if r6JointsData[char] then
+                for jointName, data in pairs(r6JointsData[char]) do
+                    local joint = torso:FindFirstChild(jointName)
+                    if joint and joint:IsA("Motor6D") then
+                        joint.Part0 = data.Part0
+                        joint.Part1 = data.Part1
+                        joint.C0 = data.C0
+                        joint.C1 = data.C1
+                    end
+                end
+                r6JointsData[char] = nil
+            end
+        end
+    end
+end
+
+local flySpeed = 60
+local flyBv, flyBg
+local flyCharacter, flyHumanoid, flyRootPart
+
+local function setupFly()
+    local char = LocalPlayer.Character
+    if char then
+        flyCharacter = char
+        flyHumanoid = char:FindFirstChildOfClass("Humanoid")
+        flyRootPart = char:FindFirstChild("HumanoidRootPart")
+    end
+end
+
+setupFly()
+table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
+    task.wait(0.5)
+    setupFly()
+    State.FlyActive = false
+    State.RagdollActive = false
+    if flyBv then pcall(function() flyBv:Destroy() end) flyBv = nil end
+    if flyBg then pcall(function() flyBg:Destroy() end) flyBg = nil end
+end))
+
+local OriginalLighting = {
+    Brightness = Lighting.Brightness,
+    ClockTime = Lighting.ClockTime,
+    FogEnd = Lighting.FogEnd,
+    GlobalShadows = Lighting.GlobalShadows,
+    Ambient = Lighting.Ambient,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
+    ColorShift_Top = Lighting.ColorShift_Top,
+    ColorShift_Bottom = Lighting.ColorShift_Bottom
+}
+
+local OriginalEffectStates = {}
+for _, effect in pairs(Lighting:GetChildren()) do
+    if effect:IsA("PostEffect") or effect:IsA("BloomEffect") or effect:IsA("BlurEffect") or effect:IsA("ColorCorrectionEffect") or effect:IsA("SunRaysEffect") or effect:IsA("DepthOfFieldEffect") then
+        OriginalEffectStates[effect] = effect.Enabled
+    end
+end
+
+local OriginalHitboxSizes = {}
+local OriginalPartMaterials = {}
+
+local function applyFullBright(enable)
+    if enable then
+        pcall(function()
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 14
+            Lighting.FogEnd = 9e9
+            Lighting.GlobalShadows = false
+            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            Lighting.ColorShift_Top = Color3.fromRGB(255, 255, 255)
+            Lighting.ColorShift_Bottom = Color3.fromRGB(255, 255, 255)
+            for _, effect in pairs(Lighting:GetChildren()) do
+                if effect:IsA("PostEffect") or effect:IsA("BloomEffect") or effect:IsA("BlurEffect") or effect:IsA("ColorCorrectionEffect") or effect:IsA("SunRaysEffect") or effect:IsA("DepthOfFieldEffect") then
+                    if OriginalEffectStates[effect] == nil then OriginalEffectStates[effect] = effect.Enabled end
+                    effect.Enabled = false
+                end
+            end
+        end)
+    else
+        pcall(function()
+            Lighting.Brightness = OriginalLighting.Brightness
+            Lighting.ClockTime = OriginalLighting.ClockTime
+            Lighting.FogEnd = OriginalLighting.FogEnd
+            Lighting.GlobalShadows = OriginalLighting.GlobalShadows
+            Lighting.Ambient = OriginalLighting.Ambient
+            Lighting.OutdoorAmbient = OriginalLighting.OutdoorAmbient
+            Lighting.ColorShift_Top = OriginalLighting.ColorShift_Top
+            Lighting.ColorShift_Bottom = OriginalLighting.ColorShift_Bottom
+            for _, effect in pairs(Lighting:GetChildren()) do
+                if effect:IsA("PostEffect") or effect:IsA("BloomEffect") or effect:IsA("BlurEffect") or effect:IsA("ColorCorrectionEffect") or effect:IsA("SunRaysEffect") or effect:IsA("DepthOfFieldEffect") then
+                    if OriginalEffectStates[effect] ~= nil then effect.Enabled = OriginalEffectStates[effect] else effect.Enabled = true end
+                end
+            end
+        end)
+    end
+end
+
+-- ==================== OPTIMIZED FIX LAG SYSTEM ====================
+local fixLagConnection = nil
+local function applyFixLag(enable)
+    if enable then
+        pcall(function()
+            Lighting.GlobalShadows = false
+            Lighting.Brightness = 1
+            local existingSky = Lighting:FindFirstChildOfClass("Sky")
+            if not existingSky then existingSky = Instance.new("Sky", Lighting) end
+            existingSky.SkyboxBk, existingSky.SkyboxDn, existingSky.SkyboxFt, existingSky.SkyboxLf, existingSky.SkyboxRt, existingSky.SkyboxUp = "rbxassetid://0", "rbxassetid://0", "rbxassetid://0", "rbxassetid://0", "rbxassetid://0", "rbxassetid://0"
+            
+            -- Quét một lần duy nhất với task.defer để không làm nghẽn luồng chính
+            task.defer(function()
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and not obj:IsDescendantOf(LocalPlayer.Character) then
+                        if not obj:FindFirstChild("UniversalESP") then
+                            OriginalPartMaterials[obj] = obj.Material
+                            obj.Material = Enum.Material.Plastic
+                            obj.Reflectance = 0
+                        end
+                    elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                        obj.Enabled = false
+                    end
+                end
+            end)
+            
+            -- Lắng nghe sự kiện nhẹ nhàng khi có object mới sinh ra
+            fixLagConnection = workspace.DescendantAdded:Connect(function(obj)
+                if not State.FixLag then return end
+                task.defer(function()
+                    if obj:IsA("BasePart") and not obj:IsDescendantOf(LocalPlayer.Character) then
+                        if not obj:FindFirstChild("UniversalESP") then
+                            OriginalPartMaterials[obj] = obj.Material
+                            obj.Material = Enum.Material.Plastic
+                            obj.Reflectance = 0
+                        end
+                    elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                        obj.Enabled = false
+                    end
+                end)
+            end)
+            table.insert(Connections, fixLagConnection)
+        end)
+    else
+        pcall(function()
+            if fixLagConnection then
+                fixLagConnection:Disconnect()
+                fixLagConnection = nil
+            end
+            for part, mat in pairs(OriginalPartMaterials) do
+                if part and part.Parent then
+                    pcall(function() part.Material = mat end)
+                end
+            end
+            OriginalPartMaterials = {}
+        end)
+    end
+end
+
+-- ==================== RAYFIELD UI INITIALIZATION ====================
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Kiyo Hub",
+    Icon = 0,
+    LoadingTitle = "Kiyo Hub",
+    LoadingSubtitle = "by Delta Optimized",
+    Theme = "Light",
+    ToggleUIKeybind = "K",
+    DisableRayfieldPrompts = false,
+    DisableBuildWarnings = false,
+    ConfigurationSaving = { Enabled = true, FolderName = "KiyoHubConfig", FileName = "Config" },
+    Discord = { Enabled = false },
+    KeySystem = false
+})
+
+local MainTab = Window:CreateTab("Main", 4483362458)
+local VisualTab = Window:CreateTab("Visuals", 4483362458)
+local TeleportTab = Window:CreateTab("Teleport & Misc", 4483362458)
+local ServerTab = Window:CreateTab("Server & Audio", 4483362458)
+
+local ParentGui = (gethui and gethui()) or game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+if ParentGui:FindFirstChild("KiyoHubSubGui") then ParentGui.KiyoHubSubGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui", ParentGui)
+ScreenGui.Name = "KiyoHubSubGui"
+ScreenGui.ResetOnSpawn = false
+
+local function createSubButton(name, text, pos, size)
+    local btn = Instance.new("TextButton", ScreenGui)
+    btn.Name = name
+    btn.Size = size or UDim2.new(0, 38, 0, 38)
+    btn.Position = pos
+    btn.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextColor3 = Color3.fromRGB(40, 40, 50)
+    btn.TextSize = 10
+    btn.Visible = false
+    btn.Active = true
+    btn.Draggable = true
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = Color3.fromRGB(200, 200, 210)
+    stroke.Thickness = 1
+    return btn, stroke
+end
+
+local SubFlyBtn, SubFlyStroke = createSubButton("SubFlyBtn", "FLY", UDim2.new(0.85, 0, 0.25, 0))
+SubFlyBtn.MouseButton1Click:Connect(function()
+    State.FlyActive = not State.FlyActive
+    setupFly()
+    if State.FlyActive then
+        SubFlyBtn.BackgroundColor3, SubFlyBtn.TextColor3, SubFlyStroke.Color = Color3.fromRGB(0, 160, 100), Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 230, 140)
+        if flyRootPart and flyHumanoid then
+            if flyBv then flyBv:Destroy() end
+            if flyBg then flyBg:Destroy() end
+            flyBv = Instance.new("BodyVelocity", flyRootPart)
+            flyBv.Velocity, flyBv.MaxForce = Vector3.new(0, 0, 0), Vector3.new(math.huge, math.huge, math.huge)
+            flyBg = Instance.new("BodyGyro", flyRootPart)
+            flyBg.MaxTorque, flyBg.CFrame = Vector3.new(math.huge, math.huge, math.huge), flyRootPart.CFrame
+            flyHumanoid.PlatformStand = true
+        end
+    else
+        SubFlyBtn.BackgroundColor3, SubFlyBtn.TextColor3, SubFlyStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+        if flyBv then flyBv:Destroy() flyBv = nil end
+        if flyBg then flyBg:Destroy() flyBg = nil end
+        if flyHumanoid then flyHumanoid.PlatformStand = false end
+    end
+end)
+
+local SubRagdollBtn, SubRagdollStroke = createSubButton("SubRagdollBtn", "RAG", UDim2.new(0.85, 0, 0.73, 0))
+SubRagdollBtn.MouseButton1Click:Connect(function()
+    State.RagdollActive = not State.RagdollActive
+    local char = LocalPlayer.Character
+    if char then
+        if State.RagdollActive then
+            SubRagdollBtn.BackgroundColor3, SubRagdollBtn.TextColor3, SubRagdollStroke.Color = Color3.fromRGB(0, 160, 100), Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 230, 140)
+            applyRagdoll(char, true)
+        else
+            SubRagdollBtn.BackgroundColor3, SubRagdollBtn.TextColor3, SubRagdollStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+            applyRagdoll(char, false)
+        end
+    end
+end)
+
+local SubTPBtn, SubTPStroke = createSubButton("SubTPBtn", "TP", UDim2.new(0.85, 0, 0.55, 0))
+SubTPBtn.TextSize = 12
+SubTPBtn.MouseButton1Click:Connect(function()
+    State.ClickTPActive = not State.ClickTPActive
+    if State.ClickTPActive then
+        SubTPBtn.BackgroundColor3, SubTPBtn.TextColor3, SubTPStroke.Color = Color3.fromRGB(0, 160, 100), Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 230, 140)
+    else
+        SubTPBtn.BackgroundColor3, SubTPBtn.TextColor3, SubTPStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+    end
+end)
+
+local SafeSpotContainer = Instance.new("Folder", ScreenGui)
+SafeSpotContainer.Name = "SafeSpotContainer"
+
+local function updateSafeSpotButtons()
+    SafeSpotContainer:ClearAllChildren()
+    if not State.SafeSpot then return end
+    for i = 1, State.SafeSpotCount do
+        local btn = Instance.new("TextButton", SafeSpotContainer)
+        btn.Size, btn.Position = UDim2.new(0, 38, 0, 38), UDim2.new(0.85, 0, 0.81 + ((i - 1) * 0.07), 0)
+        btn.BackgroundColor3, btn.Text, btn.Font, btn.TextColor3, btn.TextSize = Color3.fromRGB(240, 240, 245), "S" .. i, Enum.Font.GothamBold, Color3.fromRGB(40, 40, 50), 10
+        btn.Active, btn.Draggable = true, true
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+        local stroke = Instance.new("UIStroke", btn)
+        stroke.Color, stroke.Thickness = Color3.fromRGB(200, 200, 210), 1
+
+        btn.MouseButton1Click:Connect(function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                if not State.SafeSpots[i] then
+                    State.SafeSpots[i] = hrp.CFrame
+                    btn.BackgroundColor3, btn.TextColor3, stroke.Color, btn.Text = Color3.fromRGB(0, 160, 100), Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 230, 140), "TP" .. i
+                else
+                    hrp.CFrame = State.SafeSpots[i]
+                end
+            end
+        end)
+    end
+end
+
+local SubShiftLockBtn, SubShiftLockStroke = createSubButton("SubShiftLockBtn", "LOCK", UDim2.new(0.85, 0, 0.43, 0))
+SubShiftLockBtn.MouseButton1Click:Connect(function()
+    State.ShiftLockActive = not State.ShiftLockActive
+    if State.ShiftLockActive then
+        SubShiftLockBtn.BackgroundColor3, SubShiftLockBtn.TextColor3, SubShiftLockStroke.Color = Color3.fromRGB(0, 160, 100), Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 230, 140)
+    else
+        SubShiftLockBtn.BackgroundColor3, SubShiftLockBtn.TextColor3, SubShiftLockStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+    end
+end)
+
+local SubAutoClickBtn, SubAutoClickStroke = createSubButton("SubAutoClickBtn", "TAP", UDim2.new(0.78, 0, 0.75, 0))
+SubAutoClickBtn.TextSize = 11
+SubAutoClickBtn.MouseButton1Click:Connect(function()
+    if State.AutoClickActive or State.AutoClickSelecting then
+        State.AutoClickActive, State.AutoClickSelecting = false, false
+        SubAutoClickBtn.BackgroundColor3, SubAutoClickBtn.TextColor3, SubAutoClickStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+    else
+        State.AutoClickSelecting = true
+        SubAutoClickBtn.BackgroundColor3, SubAutoClickBtn.TextColor3, SubAutoClickStroke.Color = Color3.fromRGB(210, 130, 0), Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 170, 0)
+    end
+end)
+
+local SubFakeLagBtn, SubFakeLagStroke = createSubButton("SubFakeLagBtn", "LAG", UDim2.new(0.85, 0, 0.31, 0))
+SubFakeLagBtn.MouseButton1Click:Connect(function()
+    State.FakeLagActive = not State.FakeLagActive
+    local char = LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if State.FakeLagActive then
+            SubFakeLagBtn.BackgroundColor3, SubFakeLagBtn.TextColor3, SubFakeLagStroke.Color = Color3.fromRGB(0, 160, 100), Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 230, 140)
+            if hrp then
+                FakeLagSavedCFrame = hrp.CFrame
+                FakeLagSavedVelocities = {}
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        FakeLagSavedVelocities[part] = {
+                            AssemblyLinearVelocity = part.AssemblyLinearVelocity,
+                            AssemblyAngularVelocity = part.AssemblyAngularVelocity
+                        }
+                        part.Anchored = true
+                    end
+                end
+            end
+        else
+            SubFakeLagBtn.BackgroundColor3, SubFakeLagBtn.TextColor3, SubFakeLagStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.Anchored = false
+                    local data = FakeLagSavedVelocities[part]
+                    if data then pcall(function() part.AssemblyLinearVelocity, part.AssemblyAngularVelocity = data.AssemblyLinearVelocity, data.AssemblyAngularVelocity end) end
+                end
+            end
+            if hrp and FakeLagSavedCFrame then hrp.CFrame = FakeLagSavedCFrame end
+            FakeLagSavedVelocities = {}
+        end
+    end
+end)
+
+local SubRewindBtn, SubRewindStroke = createSubButton("SubRewindBtn", "REW", UDim2.new(0.85, 0, 0.19, 0))
+SubRewindBtn.MouseButton1Click:Connect(function()
+    State.TimeRewindActive = not State.TimeRewindActive
+    if State.TimeRewindActive then
+        SubRewindBtn.BackgroundColor3, SubRewindBtn.TextColor3, SubRewindStroke.Color = Color3.fromRGB(180, 50, 200), Color3.fromRGB(255, 255, 255), Color3.fromRGB(220, 100, 255)
+    else
+        SubRewindBtn.BackgroundColor3, SubRewindBtn.TextColor3, SubRewindStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+    end
+end)
+
+local FastResetSubBtn, FastResetSubStroke = createSubButton("FastResetSubBtn", "RST", UDim2.new(0.92, 0, 0.05, 0))
+FastResetSubBtn.MouseButton1Click:Connect(function()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Health = 0 end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp:Destroy() end
+        end
+    end)
+end)
+
+local AirWalkPlatform = Instance.new("Part")
+AirWalkPlatform.Name = "AirWalkPlatform"
+AirWalkPlatform.Size, AirWalkPlatform.Transparency, AirWalkPlatform.Anchored, AirWalkPlatform.CanCollide = Vector3.new(6, 1, 6), 1, true, false
+AirWalkPlatform.Parent = workspace
+
+local function applyXRay(enable)
+    task.spawn(function()
+        if enable then
+            OriginalXRayTransparency = {}
+            for _, part in pairs(workspace:GetDescendants()) do
+                if part:IsA("BasePart") and not part:IsDescendantOf(LocalPlayer.Character) then
+                    OriginalXRayTransparency[part] = part.LocalTransparencyModifier
+                    part.LocalTransparencyModifier = 0.9
+                end
+            end
+        else
+            for part, origTrans in pairs(OriginalXRayTransparency) do
+                if part and part.Parent then part.LocalTransparencyModifier = origTrans end
+            end
+            OriginalXRayTransparency = {}
+        end
+    end)
+end
+
+local isUnloaded = false
+local function UnloadScript()
+    if isUnloaded then return end
+    isUnloaded = true
+    for k in pairs(State) do if type(State[k]) == "boolean" then State[k] = false end end
+    applyFullBright(false)
+    applyFixLag(false)
+    if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = 70 end
+    Workspace.Gravity = 196.2
+
+    local char = LocalPlayer.Character
+    if char then
+        applyRagdoll(char, false)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed, hum.JumpPower, hum.AutoRotate, hum.PlatformStand = 16, 50, true, false end
+    end
+
+    if flyBv then pcall(function() flyBv:Destroy() end) flyBv = nil end
+    if flyBg then pcall(function() flyBg:Destroy() end) flyBg = nil end
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character then
+            local highlight = p.Character:FindFirstChild("UniversalESP") if highlight then highlight:Destroy() end
+            local nameTag = p.Character:FindFirstChild("ESPNameTag") if nameTag then nameTag:Destroy() end
+            for _, part in pairs(p.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.LocalTransparencyModifier = 0
+                    if OriginalHitboxSizes[part] then part.Size, part.Transparency, part.CanCollide = OriginalHitboxSizes[part], 0, true end
+                end
+            end
+        end
+    end
+
+    applyXRay(false)
+    if CurrentSound then pcall(function() CurrentSound:Stop() CurrentSound:Destroy() end) CurrentSound = nil end
+    if AirWalkPlatform then pcall(function() AirWalkPlatform:Destroy() end) end
+    for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
+    pcall(function() ScreenGui:Destroy() end)
+    pcall(function() Rayfield:Destroy() end)
+end
+
+-- ==================== UI CREATION ====================
+MainTab:CreateToggle({ Name = "Fly", CurrentValue = false, Flag = "FlyToggle", Callback = function(Value) State.Fly = Value SubFlyBtn.Visible = Value if not Value then State.FlyActive = false SubFlyBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 245) SubFlyBtn.TextColor3 = Color3.fromRGB(40, 40, 50) SubFlyStroke.Color = Color3.fromRGB(200, 200, 210) if flyBv then pcall(function() flyBv:Destroy() end) flyBv = nil end if flyBg then pcall(function() flyBg:Destroy() end) flyBg = nil end if flyHumanoid then flyHumanoid.PlatformStand = false end end end })
+MainTab:CreateToggle({ Name = "Ragdoll", CurrentValue = false, Flag = "RagdollToggle", Callback = function(Value) State.Ragdoll = Value SubRagdollBtn.Visible = Value local char = LocalPlayer.Character if not Value then State.RagdollActive = false SubRagdollBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 245) SubRagdollBtn.TextColor3 = Color3.fromRGB(40, 40, 50) SubRagdollStroke.Color = Color3.fromRGB(200, 200, 210) if char then applyRagdoll(char, false) end elseif Value and State.RagdollActive and char then applyRagdoll(char, true) end end })
+MainTab:CreateToggle({ Name = "Aimbot", CurrentValue = false, Flag = "AimbotToggle", Callback = function(Value) State.Aimbot = Value end })
+MainTab:CreateToggle({ Name = "Inf Jump", CurrentValue = false, Flag = "InfJump", Callback = function(Value) State.InfJump = Value end })
+MainTab:CreateToggle({ Name = "Noclip", CurrentValue = false, Flag = "Noclip", Callback = function(Value) State.Noclip = Value end })
+MainTab:CreateToggle({ Name = "Anti Slap", CurrentValue = false, Flag = "AntiSlap", Callback = function(Value) State.AntiSlap = Value end })
+MainTab:CreateToggle({ Name = "Anti Fling", CurrentValue = false, Flag = "AntiFling", Callback = function(Value) State.AntiFling = Value end })
+MainTab:CreateToggle({ Name = "Air Walk", CurrentValue = false, Flag = "AirWalk", Callback = function(Value) State.AirWalk = Value if not Value then AirWalkPlatform.CanCollide = false end end })
+MainTab:CreateToggle({ Name = "Shift Lock", CurrentValue = false, Flag = "ShiftLock", Callback = function(Value) State.ShiftLock = Value SubShiftLockBtn.Visible = Value if not Value then State.ShiftLockActive = false SubShiftLockBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 245) SubShiftLockBtn.TextColor3 = Color3.fromRGB(40, 40, 50) SubShiftLockStroke.Color = Color3.fromRGB(200, 200, 210) end end })
+MainTab:CreateToggle({ Name = "Auto Jump", CurrentValue = false, Flag = "AutoJump", Callback = function(Value) State.AutoJump = Value end })
+MainTab:CreateInput({ Name = "WalkSpeed", CurrentValue = "16", PlaceholderText = "16", RemoveTextAfterFocusLost = false, Flag = "WalkSpeedInput", Callback = function(Text) local val = tonumber(Text) if val then State.WalkSpeed = val end end })
+MainTab:CreateInput({ Name = "JumpPower", CurrentValue = "50", PlaceholderText = "50", RemoveTextAfterFocusLost = false, Flag = "JumpPowerInput", Callback = function(Text) local val = tonumber(Text) if val then State.JumpPower = val end end })
+
+VisualTab:CreateToggle({ Name = "ESP Players", CurrentValue = false, Flag = "ESP", Callback = function(Value) State.ESP = Value end })
+VisualTab:CreateToggle({ Name = "X-Ray", CurrentValue = false, Flag = "XRay", Callback = function(Value) State.XRay = Value applyXRay(Value) end })
+VisualTab:CreateToggle({ Name = "Full Bright", CurrentValue = false, Flag = "FullBright", Callback = function(Value) State.FullBright = Value applyFullBright(Value) end })
+VisualTab:CreateToggle({ Name = "Stretched Screen (4:3)", CurrentValue = false, Flag = "StretchedToggle", Callback = function(Value) State.Stretched = Value end })
+VisualTab:CreateSlider({ Name = "Stretched Resolution", Range = {0.5, 1.0}, Increment = 0.01, CurrentValue = 0.65, Flag = "StretchedSlider", Callback = function(Value) State.StretchedValue = Value end })
+VisualTab:CreateToggle({ Name = "Fix Lag (Plastic & No FX)", CurrentValue = false, Flag = "FixLagToggle", Callback = function(Value) State.FixLag = Value applyFixLag(Value) end })
+VisualTab:CreateDropdown({ Name = "Sky Box", Options = {"Default", "Sunset", "Night"}, CurrentOption = {"Default"}, Flag = "SkyBoxDrop", Callback = function(Option)
+    local choice = Option[1]
+    local existingSky = Lighting:FindFirstChildOfClass("Sky") if existingSky then existingSky:Destroy() end
+    if choice == "Sunset" then Lighting.ClockTime, Lighting.Brightness = 18, 1
+    elseif choice == "Night" then Lighting.ClockTime, Lighting.Brightness = 0, 0.5
+    else Lighting.ClockTime, Lighting.Brightness = 14, OriginalLighting.Brightness end
+end })
+
+TeleportTab:CreateToggle({ Name = "Click Teleport", CurrentValue = false, Flag = "ClickTP", Callback = function(Value) State.ClickTP = Value SubTPBtn.Visible = Value if not Value then State.ClickTPActive = false SubTPBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 245) SubTPBtn.TextColor3 = Color3.fromRGB(40, 40, 50) SubTPStroke.Color = Color3.fromRGB(200, 200, 210) end end })
+TeleportTab:CreateToggle({ Name = "Safe Spot", CurrentValue = false, Flag = "SafeSpot", Callback = function(Value) State.SafeSpot = Value if not Value then State.SafeSpots = {} end updateSafeSpotButtons() end })
+TeleportTab:CreateInput({ Name = "Safe Spot Count (1-5)", CurrentValue = "1", PlaceholderText = "1", RemoveTextAfterFocusLost = false, Flag = "SafeSpotCountInput", Callback = function(Text) local val = tonumber(Text) if val then State.SafeSpotCount = math.clamp(math.floor(val), 1, 5) updateSafeSpotButtons() end end })
+TeleportTab:CreateToggle({ Name = "Auto Click", CurrentValue = false, Flag = "AutoClick", Callback = function(Value) State.AutoClick = Value SubAutoClickBtn.Visible = Value if not Value then State.AutoClickActive = false State.AutoClickSelecting = false SubAutoClickBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 245) SubAutoClickBtn.TextColor3 = Color3.fromRGB(40, 40, 50) SubAutoClickStroke.Color = Color3.fromRGB(200, 200, 210) end end })
+TeleportTab:CreateToggle({ Name = "Fake Lag", CurrentValue = false, Flag = "FakeLag", Callback = function(Value) State.FakeLag = Value SubFakeLagBtn.Visible = Value if not Value then State.FakeLagActive = false SubFakeLagBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 245) SubFakeLagBtn.TextColor3 = Color3.fromRGB(40, 40, 50) SubFakeLagStroke.Color = Color3.fromRGB(200, 200, 210) end end })
+TeleportTab:CreateToggle({ Name = "Time Rewind", CurrentValue = false, Flag = "TimeRewind", Callback = function(Value) State.TimeRewind = Value SubRewindBtn.Visible = Value if not Value then State.TimeRewindActive = false SubRewindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 245) SubRewindBtn.TextColor3 = Color3.fromRGB(40, 40, 50) SubRewindStroke.Color = Color3.fromRGB(200, 200, 210) end end })
+TeleportTab:CreateToggle({ Name = "Teleport All", CurrentValue = false, Flag = "TeleportAll", Callback = function(Value) State.TeleportAll = Value end })
+TeleportTab:CreateToggle({ Name = "Spin Ultra", CurrentValue = false, Flag = "Spin", Callback = function(Value) State.Spin = Value end })
+TeleportTab:CreateToggle({ Name = "Animation Speed", CurrentValue = false, Flag = "AnimationSpeed", Callback = function(Value) State.AnimationSpeed = Value end })
+TeleportTab:CreateToggle({ Name = "Hitbox Expander", CurrentValue = false, Flag = "HitboxExpander", Callback = function(Value) State.HitboxExpander = Value end })
+TeleportTab:CreateToggle({ Name = "Fast Reset Button", CurrentValue = false, Flag = "FastResetLeave", Callback = function(Value) FastResetSubBtn.Visible = Value end })
+TeleportTab:CreateInput({ Name = "Gravity", CurrentValue = "196.2", PlaceholderText = "196.2", RemoveTextAfterFocusLost = false, Flag = "GravityInput", Callback = function(Text) local val = tonumber(Text) if val then State.Gravity = val Workspace.Gravity = val end end })
+TeleportTab:CreateInput({ Name = "FOV (1-120)", CurrentValue = "70", PlaceholderText = "70", RemoveTextAfterFocusLost = false, Flag = "FOVInput", Callback = function(Text) local val = tonumber(Text) if val then State.FOV = math.clamp(val, 1, 120) end end })
+
+local playerNames = {"None"}
+for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(playerNames, p.Name) end end
+local LoopPeopleDropdown = TeleportTab:CreateDropdown({ Name = "Loop People (Target)", Options = playerNames, CurrentOption = {"None"}, Flag = "LoopPeopleDrop", Callback = function(Option)
+    local name = Option[1]
+    if name == "None" or not name or (TargetPlayer and TargetPlayer.Name == name) then State.LoopPeople = false TargetPlayer = nil
+    else local target = Players:FindFirstChild(name) if target then TargetPlayer = target State.LoopPeople = true end end
+end })
+
+Players.PlayerAdded:Connect(function(plr)
+    if plr ~= LocalPlayer then
+        local currentList = {"None"}
+        for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(currentList, p.Name) end end
+        LoopPeopleDropdown:Refresh(currentList)
+    end
+end)
+Players.PlayerRemoving:Connect(function(plr)
+    local currentList = {"None"}
+    for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(currentList, p.Name) end end
+    LoopPeopleDropdown:Refresh(currentList)
+    if TargetPlayer == plr then State.LoopPeople = false TargetPlayer = nil end
+end)
+
+ServerTab:CreateButton({ Name = "Rejoin Server", Callback = function() if #Players:GetPlayers() <= 1 then TeleportService:Teleport(game.PlaceId, LocalPlayer) else TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end end })
+ServerTab:CreateButton({ Name = "Server Hop (Low Players)", Callback = function()
+    task.spawn(function()
+        pcall(function()
+            local raw = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/0?sortOrder=Asc&limit=100")
+            local data = HttpService:JSONDecode(raw)
+            if data and data.data then
+                local validServers = {}
+                for _, server in ipairs(data.data) do if server.id ~= game.JobId and server.playing < server.maxPlayers then table.insert(validServers, server) end end
+                if #validServers > 0 then table.sort(validServers, function(a, b) return a.playing < b.playing end) TeleportService:TeleportToPlaceInstance(game.PlaceId, validServers[1].id, LocalPlayer) end
+            end
+        end)
+    end)
+end })
+ServerTab:CreateButton({ Name = "Server Hop (High Players)", Callback = function()
+    task.spawn(function()
+        pcall(function()
+            local raw = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/0?sortOrder=Asc&limit=100")
+            local data = HttpService:JSONDecode(raw)
+            if data and data.data then
+                local validServers = {}
+                for _, server in ipairs(data.data) do if server.id ~= game.JobId and server.playing < server.maxPlayers then table.insert(validServers, server) end end
+                if #validServers > 0 then table.sort(validServers, function(a, b) return a.playing > b.playing end) TeleportService:TeleportToPlaceInstance(game.PlaceId, validServers[1].id, LocalPlayer) end
+            end
+        end)
+    end)
+end })
+
+local soundIdInput = ""
+ServerTab:CreateInput({ Name = "Sound ID", CurrentValue = "", PlaceholderText = "Enter Sound ID", RemoveTextAfterFocusLost = false, Flag = "SoundIdInput", Callback = function(Text) soundIdInput = Text end })
+ServerTab:CreateButton({ Name = "Play / Stop Sound", Callback = function()
+    if not CurrentSound then
+        if soundIdInput and soundIdInput ~= "" then
+            pcall(function() CurrentSound = Instance.new("Sound", LocalPlayer.Character or workspace) CurrentSound.SoundId = "rbxassetid://" .. soundIdInput CurrentSound.Volume = 2 CurrentSound.Looped = true CurrentSound:Play() end)
+        end
+    else pcall(function() CurrentSound:Stop() CurrentSound:Destroy() CurrentSound = nil end) end
+end })
+ServerTab:CreateButton({ Name = "Unload Script", Callback = function() UnloadScript() end })
+
+table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed or isUnloaded then return end
+    local inputType = input.UserInputType
+    if inputType == Enum.UserInputType.MouseButton1 or inputType == Enum.UserInputType.Touch then
+        if State.AutoClick and State.AutoClickSelecting then
+            State.AutoClickPoint = Vector2.new(input.Position.X, input.Position.Y)
+            State.AutoClickSelecting, State.AutoClickActive = false, true
+            SubAutoClickBtn.BackgroundColor3, SubAutoClickBtn.TextColor3, SubAutoClickStroke.Color = Color3.fromRGB(0, 160, 100), Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 230, 140)
+            return
+        end
+        if State.ClickTP and State.ClickTPActive then
+            local mousePos = UserInputService:GetMouseLocation()
+            local camera = workspace.CurrentCamera
+            if camera then
+                local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+                local raycastParams = RaycastParams.new() raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                if LocalPlayer.Character then raycastParams.FilterDescendantsInstances = {LocalPlayer.Character} end
+                local result = workspace:Raycast(ray.Origin, ray.Direction * 2000, raycastParams)
+                if result and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0))
+                end
+            end
+        end
+    end
+end))
+
+-- Auto Clicker Thread chạy ngắt quãng an toàn (0.1s thay vì lặp liên tục vô tận gây lag)
+task.spawn(function()
+    while not isUnloaded do
+        task.wait(0.1)
+        if State.AutoClick and State.AutoClickActive then
+            pcall(function()
+                VirtualInputManager:SendMouseButtonEvent(State.AutoClickPoint.X, State.AutoClickPoint.Y, 0, true, game, 0)
+                VirtualInputManager:SendMouseButtonEvent(State.AutoClickPoint.X, State.AutoClickPoint.Y, 0, false, game, 0)
+            end)
+        end
+    end
+end)
+
+-- Teleport All Thread ngắt quãng tối ưu
+task.spawn(function()
+    while not isUnloaded do
+        task.wait(0.2)
+        if State.TeleportAll then
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local hrp = char.HumanoidRootPart
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character then
+                            local targetHrp = p.Character:FindFirstChild("HumanoidRootPart")
+                            local targetHum = p.Character:FindFirstChildOfClass("Humanoid")
+                            if targetHrp and targetHum and targetHum.Health > 0 then
+                                hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 3, 0)
+                                break
+                            end
+                        end
+                        if not State.TeleportAll or isUnloaded then break end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+local rainbowColor = Color3.fromRGB(0, 150, 80)
+task.spawn(function()
+    local hue = 0
+    while not isUnloaded do
+        hue = (hue + 0.02) % 1 rainbowColor = Color3.fromHSV(hue, 0.8, 0.9) task.wait(0.2)
+    end
+end)
+
+local loopTimer = 0
+local espUpdateTimer = 0
+local antiTouchTimer = 0
+local hitboxUpdateTimer = 0
+
+local function isMM2()
+    return game.PlaceId == 142823291 or workspace:FindFirstChild("GunDrop") ~= nil or LocalPlayer.Backpack:FindFirstChild("Revolver") or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Revolver"))
+end
+
+local function getClosestPlayerToHead()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+    local myHrp = myChar.HumanoidRootPart
+    local isSheriffOrHero = isMM2() and (myChar:FindFirstChild("Revolver") or LocalPlayer.Backpack:FindFirstChild("Revolver"))
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            local head = p.Character:FindFirstChild("Head")
+            if hum and hum.Health > 0 and head then
+                local isValid = true
+                if isMM2() and isSheriffOrHero then
+                    if not (p.Character:FindFirstChild("Knife") or p.Backpack:FindFirstChild("Knife")) then isValid = false end
+                else
+                    if p.Team and LocalPlayer.Team and p.Team == LocalPlayer.Team then isValid = false end
+                end
+                if isValid then
+                    local dist = (head.Position - myHrp.Position).Magnitude
+                    if dist < shortestDistance then shortestDistance = dist closestPlayer = p end
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- ==================== RENDERSTEPPED LOOP (ĐÃ TỐI ƯU CỰC KỲ GỌN NHẸ) ====================
+table.insert(Connections, RunService.RenderStepped:Connect(function(delta)
+    if isUnloaded then return end
+    
+    if State.Stretched and workspace.CurrentCamera then
+        pcall(function()
+            local res = State.StretchedValue
+            workspace.CurrentCamera.CFrame = workspace.CurrentCamera.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, res, 0, 0, 0, 1)
+        end)
+    end
+
+    if State.FlyActive and flyRootPart and flyRootPart.Parent and flyHumanoid and workspace.CurrentCamera then
+        local moveDir = flyHumanoid.MoveDirection
+        if moveDir.Magnitude > 0 then
+            flyBv.Velocity = moveDir * flySpeed + Vector3.new(0, Camera.CFrame.LookVector.Y * flySpeed * (moveDir.Z ~= 0 and 1 or 0), 0)
+        else
+            flyBv.Velocity = Vector3.new(0, 0.1, 0)
+        end
+        flyBg.CFrame = Camera.CFrame
+    end
+
+    if State.Aimbot then
+        pcall(function()
+            local target = getClosestPlayerToHead()
+            if target and target.Character then
+                local head = target.Character:FindFirstChild("Head")
+                if head and Camera then
+                    Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, head.Position), 0.9)
+                end
+            end
+        end)
+    end
+
+    if State.TimeRewind then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
+            local hrp, hum = char.HumanoidRootPart, char.HumanoidOfClass or char:FindFirstChildOfClass("Humanoid")
+            if not State.TimeRewindActive then
+                table.insert(RewindHistory, 1, { CFrame = hrp.CFrame, Velocity = hrp.AssemblyLinearVelocity, State = hum:GetState() })
+                if #RewindHistory > MAX_REWIND_FRAMES then table.remove(RewindHistory, #RewindHistory) end
+            else
+                if #RewindHistory > 0 then
+                    local targetData = table.remove(RewindHistory, 1)
+                    if targetData then
+                        hrp.CFrame = hrp.CFrame:Lerp(targetData.CFrame, 0.5)
+                        pcall(function() hrp.AssemblyLinearVelocity = targetData.Velocity hum:ChangeState(targetData.State) end)
+                    end
+                else
+                    State.TimeRewindActive = false SubRewindBtn.BackgroundColor3, SubRewindBtn.TextColor3, SubRewindStroke.Color = Color3.fromRGB(240, 240, 245), Color3.fromRGB(40, 40, 50), Color3.fromRGB(200, 200, 210)
+                end
+            end
+        end
+    end
+
+    if State.FakeLag and State.FakeLagActive then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and FakeLagSavedCFrame then char.HumanoidRootPart.CFrame = FakeLagSavedCFrame end
+    end
+
+    if State.Spin then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(500), 0) end
+    end
+
+    if State.AnimationSpeed then
+        pcall(function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChildOfClass("Humanoid") then
+                local animator = char.Humanoid:FindFirstChildOfClass("Animator")
+                if animator then
+                    for _, track in pairs(animator:GetPlayingAnimationTracks()) do if track.Speed ~= 40 then track:AdjustSpeed(40) end end
+                end
+            end
+        end)
+    end
+
+    hitboxUpdateTimer = hitboxUpdateTimer + delta
+    if State.HitboxExpander then
+        if hitboxUpdateTimer >= 0.5 then -- Giảm tần suất quét hitbox xuống 0.5s để mượt mà tuyệt đối
+            hitboxUpdateTimer = 0
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then
+                    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        if not OriginalHitboxSizes[hrp] then OriginalHitboxSizes[hrp] = hrp.Size end
+                        pcall(function() hrp.Size, hrp.Transparency, hrp.CanCollide = Vector3.new(15, 15, 15), 0.7, false end)
+                    end
+                end
+            end
+        end
+    else
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character then
+                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and OriginalHitboxSizes[hrp] then
+                    pcall(function() hrp.Size, hrp.Transparency, hrp.CanCollide = OriginalHitboxSizes[hrp], 0, true end)
+                end
+            end
+        end
+    end
+
+    if State.LoopPeople and TargetPlayer and TargetPlayer.Character then
+        local char, targetChar = LocalPlayer.Character, TargetPlayer.Character
+        if char and targetChar then
+            local hrp, targetHrp = char:FindFirstChild("HumanoidRootPart"), targetChar:FindFirstChild("HumanoidRootPart")
+            if hrp and targetHrp then
+                loopTimer = loopTimer + delta * 18
+                hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 1.3 + (math.sin(loopTimer) * 0.85))
+            end
+        end
+    end
+
+    if State.AirWalk then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
+            local hrp, hum = char.HumanoidRootPart, char:FindFirstChildOfClass("Humanoid")
+            if hum.Health > 0 then
+                AirWalkPlatform.CanCollide = true
+                local hipHeight = (hum.RigType == Enum.HumanoidRigType.R6) and 2 or hum.HipHeight
+                AirWalkPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - (hipHeight + (hrp.Size.Y / 2) + 0.5), hrp.Position.Z)
+            else AirWalkPlatform.CanCollide = false end
+        else AirWalkPlatform.CanCollide = false end
+    else AirWalkPlatform.CanCollide = false end
+
+    if State.ShiftLock and State.ShiftLockActive then
+        local camera, char = workspace.CurrentCamera, LocalPlayer.Character
+        if camera and char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
+            char.Humanoid.AutoRotate = false
+            local _, y = camera.CFrame:ToOrientation()
+            char.HumanoidRootPart.CFrame = CFrame.new(char.HumanoidRootPart.Position) * CFrame.Angles(0, y, 0)
+        end
+    else
+        local char = LocalPlayer.Character if char and char:FindFirstChildOfClass("Humanoid") then char.Humanoid.AutoRotate = true end
+    end
+
+    if not State.Aimbot and workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = State.FOV end
+
+    espUpdateTimer = espUpdateTimer + delta
+    if State.ESP then
+        if espUpdateTimer >= 0.2 then -- Tăng thời gian cập nhật ESP lên 0.2s để giảm tải hoàn toàn
+            espUpdateTimer = 0
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then
+                    local highlight = p.Character:FindFirstChild("UniversalESP")
+                    if not highlight then
+                        highlight = Instance.new("Highlight", p.Character)
+                        highlight.Name, highlight.DepthMode, highlight.FillTransparency, highlight.OutlineTransparency = "UniversalESP", Enum.HighlightDepthMode.AlwaysOnTop, 0.5, 0
+                    end
+                    highlight.OutlineColor, highlight.FillColor = rainbowColor, rainbowColor
+
+                    local head = p.Character:FindFirstChild("Head") or p.Character:FindFirstChild("HumanoidRootPart")
+                    if head then
+                        local nameTag = head:FindFirstChild("ESPNameTag")
+                        if not nameTag then
+                            nameTag = Instance.new("BillboardGui", head)
+                            nameTag.Name, nameTag.Size, nameTag.StudsOffset, nameTag.AlwaysOnTop = "ESPNameTag", UDim2.new(0, 100, 0, 25), Vector3.new(0, 2, 0), true
+                            local textLabel = Instance.new("TextLabel", nameTag)
+                            textLabel.Name, textLabel.Size, textLabel.BackgroundTransparency, textLabel.Font, textLabel.TextSize, textLabel.TextStrokeTransparency = "Text", UDim2.new(1, 0, 1, 0), 1, Enum.Font.GothamBold, 10, 0.5
+                        end
+                        local tLabel = nameTag:FindFirstChild("Text")
+                        if tLabel then tLabel.Text, tLabel.TextColor3 = p.DisplayName .. " (@" .. p.Name .. ")", rainbowColor end
+                    end
+                end
+            end
+        end
+    else
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character then
+                local highlight = p.Character:FindFirstChild("UniversalESP") if highlight then highlight:Destroy() end
+                for _, descendant in pairs(p.Character:GetDescendants()) do if descendant.Name == "ESPNameTag" then descendant:Destroy() end end
+            end
+        end
+    end
+end))
+
+-- ==================== STEPPED LOOP (TỐI ƯU VẬT LÝ) ====================
+table.insert(Connections, RunService.Stepped:Connect(function(delta)
+    if isUnloaded then return end
+    local char = LocalPlayer.Character
+    if char then
+        if State.Noclip then
+            for _, part in pairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = false end end
+        end
+        local hum, hrp = char:FindFirstChildOfClass("Humanoid"), char:FindFirstChild("HumanoidRootPart")
+        if hum then
+            hum.WalkSpeed, hum.UseJumpPower, hum.JumpPower = State.WalkSpeed, true, State.JumpPower
+            if State.AutoJump and hum.FloorMaterial ~= Enum.Material.Air then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+            if State.RagdollActive then hum.PlatformStand = true end
+        end
+        if State.AntiFling then
+            antiTouchTimer = antiTouchTimer + delta
+            if antiTouchTimer >= 0.5 then
+                antiTouchTimer = 0
+                task.spawn(function()
+                    for _, otherPlayer in pairs(Players:GetPlayers()) do
+                        if otherPlayer ~= LocalPlayer and otherPlayer.Character then
+                            local otherHrp = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            if hrp and otherHrp and (hrp.Position - otherHrp.Position).Magnitude < 40 then
+                                for _, part in pairs(otherPlayer.Character:GetDescendants()) do if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end end
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+        if State.AntiSlap and hrp then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    for _, child in pairs(part:GetChildren()) do
+                        if child:IsA("BodyVelocity") or child:IsA("BodyThrust") or child:IsA("LinearVelocity") or child:IsA("VectorVelocity") or child:IsA("BodyForce") or child:IsA("BodyGyro") or child:IsA("BodyPosition") or child:IsA("AlignPosition") or child:IsA("VectorForce") or child:IsA("Torque") then
+                            if not (State.FlyActive and (child == flyBv or child == flyBg)) then child:Destroy() end
+                        end
+                    end
+                end
+            end
+            if hrp.AssemblyLinearVelocity.Magnitude > 150 and not State.TimeRewindActive then hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0) end
+            if hum and not State.FlyActive and not State.RagdollActive then
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) hum:SetStateEnabled(Enum.HumanoidStateType.Physics, false) hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+            end
+        end
+    end
+end))
+
+table.insert(Connections, UserInputService.JumpRequest:Connect(function()
+    if isUnloaded then return end
+    if State.InfJump and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end))
+
+end
+
+-- Khởi chạy trực tiếp Hub
+InitializeKiyoHub()
